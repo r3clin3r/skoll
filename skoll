@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# skoll - local skill manager
+# Placeholder for issue 2+
+echo "skoll: not yet implemented"
+exit 1
