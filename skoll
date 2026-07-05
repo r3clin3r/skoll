@@ -112,16 +112,95 @@ cmd_list_stowed() {
     # Skip .git
     [ "$repo_name" = ".git" ] && continue
 
-    local skill
-    for skill in "$repo"*/; do
-      [ -d "$skill" ] || continue
+    # Recursively find all SKILL.md files at depth >= 2
+    # (depth 1 = repo root, depth 2+ = skill directories)
+    local skill_file
+    while IFS= read -r -d '' skill_file; do
+      local skill_dir
+      skill_dir="$(dirname "$skill_file")"
       local skill_name
-      skill_name="$(basename "$skill")"
-      if [ -f "$skill/SKILL.md" ]; then
-        echo "$skill_name ($repo_name)"
+      skill_name="$(basename "$skill_dir")"
+      echo "$skill_name ($repo_name)"
+    done < <(find "$repo" -mindepth 2 -type f -name "SKILL.md" -print0 2>/dev/null)
+  done
+}
+
+cmd_get() {
+  local url="$1"
+
+  # Derive directory name from URL basename, stripping .git suffix
+  local repo_name
+  repo_name="$(basename "$url")"
+  repo_name="${repo_name%.git}"
+
+  # Check for collision
+  if [ -d "$SKOLL_STOWED/$repo_name" ]; then
+    echo "error: '$repo_name' already exists in stowed directory" >&2
+    exit 1
+  fi
+
+  if [ ! -d "$SKOLL_STOWED/.git" ]; then
+    echo "error: stowed directory is not a git repository. Re-run install.sh (without --no-git)" >&2
+    exit 1
+  fi
+
+  # Add as submodule
+  git -C "$SKOLL_STOWED" submodule add "$url" "$repo_name"
+  echo "added '$repo_name' to stowed directory"
+}
+
+cmd_update() {
+  if [ ! -d "$SKOLL_STOWED/.git" ]; then
+    echo "error: stowed directory is not a git repository. Re-run install.sh (without --no-git)" >&2
+    exit 1
+  fi
+
+  echo "pulling latest changes for stowed repository..."
+  git -C "$SKOLL_STOWED" pull 2>/dev/null || echo "  (no upstream configured, skipping)"
+  echo "updating submodules..."
+  git -C "$SKOLL_STOWED" submodule update --remote
+  echo "update complete."
+}
+
+cmd_rm_stowed() {
+  local repo_name="$1"
+
+  if [ ! -d "$SKOLL_STOWED/$repo_name" ]; then
+    echo "error: '$repo_name' not found in stowed directory" >&2
+    exit 1
+  fi
+
+  # Check if any local skills reference this repo
+  local local_dir
+  local_dir="$(resolve_local_skills_dir)"
+
+  if [ -d "$local_dir" ]; then
+    local in_use=0
+    local entry
+    for entry in "$local_dir"/*; do
+      [ -L "$entry" ] || continue
+      local target
+      target="$(readlink "$entry")"
+      if [[ "$target" == "$SKOLL_STOWED/$repo_name"* ]]; then
+        local skill_name
+        skill_name="$(basename "$entry")"
+        echo "warning: '$skill_name' from '$repo_name' is still in use in $local_dir" >&2
+        in_use=1
       fi
     done
-  done
+  fi
+
+  # Full submodule removal
+  if [ -d "$SKOLL_STOWED/.git" ]; then
+    git -C "$SKOLL_STOWED" submodule deinit -f "$repo_name" 2>/dev/null || true
+    git -C "$SKOLL_STOWED" rm -f "$repo_name"
+    rm -rf "$SKOLL_STOWED/.git/modules/$repo_name"
+  else
+    # Not a git repo, just remove the directory
+    rm -rf "$SKOLL_STOWED/$repo_name"
+  fi
+
+  echo "removed '$repo_name' from stowed directory"
 }
 
 cmd_search() {
@@ -155,6 +234,28 @@ main() {
   case "$cmd" in
     list)
       cmd_list "${1:-}"
+      ;;
+    get)
+      if [ $# -lt 1 ]; then
+        echo "usage: skoll get <url>" >&2
+        exit 1
+      fi
+      cmd_get "$1"
+      ;;
+    update)
+      cmd_update
+      ;;
+    rm)
+      if [ "${1:-}" = "--stowed" ]; then
+        if [ $# -lt 2 ]; then
+          echo "usage: skoll rm --stowed <repo>" >&2
+          exit 1
+        fi
+        cmd_rm_stowed "$2"
+      else
+        echo "skoll: unknown option '$1' for rm" >&2
+        exit 1
+      fi
       ;;
     search)
       cmd_search "$@"
