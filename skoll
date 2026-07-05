@@ -1,5 +1,169 @@
 #!/usr/bin/env bash
-# skoll - local skill manager
-# Placeholder for issue 2+
-echo "skoll: not yet implemented"
-exit 1
+set -euo pipefail
+
+# ---- Config ----
+SKOLL_HOME="${HOME}/.skoll"
+SKOLL_STOWED="${SKOLL_HOME}/stowed"
+SKOLL_INI="${SKOLL_HOME}/skoll.ini"
+
+# ---- Helpers ----
+
+# Read a key from skoll.ini
+read_config() {
+  local key="$1"
+  local default="${2:-}"
+  if [ -f "$SKOLL_INI" ]; then
+    local val
+    val=$(grep "^${key}=" "$SKOLL_INI" | cut -d= -f2- | head -1)
+    if [ -n "$val" ]; then
+      echo "$val"
+      return
+    fi
+  fi
+  echo "$default"
+}
+
+# Walk up from cwd looking for the local skills directory.
+# Tries the primary local_skills_dir first, then the fallback if set.
+resolve_local_skills_dir() {
+  local dir_name
+  dir_name=$(read_config "local_skills_dir" ".agents/skills/")
+  # Normalize: strip trailing slash
+  dir_name="${dir_name%/}"
+
+  local cwd
+  cwd="$(pwd)"
+
+  # Try walking up with primary dir name
+  local check="$cwd"
+  while true; do
+    if [ -d "$check/$dir_name" ]; then
+      echo "$check/$dir_name"
+      return
+    fi
+    if [ "$check" = "/" ]; then
+      break
+    fi
+    check="$(dirname "$check")"
+  done
+
+  # Try fallback if configured
+  local fallback
+  fallback=$(read_config "fallback" "")
+  if [ -n "$fallback" ]; then
+    # Expand ~ if present
+    fallback="${fallback/#\~/$HOME}"
+    if [ -d "$fallback" ]; then
+      echo "$fallback"
+      return
+    fi
+  fi
+
+  # Not found anywhere, use current directory
+  echo "$cwd/$dir_name"
+}
+
+# ---- Commands ----
+
+cmd_list() {
+  local stowed="${1:-}"
+
+  if [ "$stowed" = "--stowed" ]; then
+    cmd_list_stowed
+    return
+  fi
+
+  local local_dir
+  local_dir="$(resolve_local_skills_dir)"
+
+  if [ ! -d "$local_dir" ]; then
+    return
+  fi
+
+  local found=0
+  local entry
+  for entry in "$local_dir"/*; do
+    [ -L "$entry" ] || continue
+    local name
+    name="$(basename "$entry")"
+    if [ -e "$entry" ]; then
+      echo "$name"
+    else
+      echo "$name [broken]"
+    fi
+    found=1
+  done
+
+  if [ "$found" -eq 0 ]; then
+    : # empty list, no output
+  fi
+}
+
+cmd_list_stowed() {
+  if [ ! -d "$SKOLL_STOWED" ]; then
+    return
+  fi
+
+  local repo
+  for repo in "$SKOLL_STOWED"/*/; do
+    [ -d "$repo" ] || continue
+    local repo_name
+    repo_name="$(basename "$repo")"
+    # Skip .git
+    [ "$repo_name" = ".git" ] && continue
+
+    local skill
+    for skill in "$repo"*/; do
+      [ -d "$skill" ] || continue
+      local skill_name
+      skill_name="$(basename "$skill")"
+      if [ -f "$skill/SKILL.md" ]; then
+        echo "$skill_name ($repo_name)"
+      fi
+    done
+  done
+}
+
+cmd_search() {
+  local pattern="${1:-}"
+
+  # Gather all skills as "skill-name (repo-name)" lines
+  local all_skills=""
+  if [ -d "$SKOLL_STOWED" ]; then
+    all_skills=$(cmd_list_stowed 2>/dev/null || true)
+  fi
+
+  if [ -z "$all_skills" ]; then
+    return
+  fi
+
+  if [ -z "$pattern" ]; then
+    # Interactive: pipe to fzf
+    echo "$all_skills" | fzf
+  else
+    # Non-interactive: pipe to fzf --filter
+    echo "$all_skills" | fzf --filter "$pattern"
+  fi
+}
+
+# ---- Main ----
+
+main() {
+  local cmd="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$cmd" in
+    list)
+      cmd_list "${1:-}"
+      ;;
+    search)
+      cmd_search "$@"
+      ;;
+    *)
+      echo "skoll: unknown command '$cmd'" >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

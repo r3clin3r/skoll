@@ -29,7 +29,7 @@ check_dep() {
   if [ -n "$min_version" ]; then
     local version major
     version=$("$cmd" --version 2>/dev/null | head -1)
-    major=$(echo "$version" | grep -oE '\d+' | head -1)
+    major=$(echo "$version" | grep -oE '[0-9]+' | head -1)
     if [ -z "$major" ]; then
       missing_deps+=("$name (cannot determine version)")
       return
