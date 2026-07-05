@@ -447,6 +447,101 @@ cmd_add_all() {
   done
 }
 
+# ---- Commands: rm (local) ----
+
+cmd_rm() {
+  if [ $# -lt 1 ]; then
+    echo "usage: skoll rm <skill> [<skill>...]" >&2
+    exit 1
+  fi
+
+  local local_dir
+  local_dir="$(resolve_local_skills_dir)"
+
+  if [ ! -d "$local_dir" ]; then
+    echo "error: no local skills directory found" >&2
+    exit 1
+  fi
+
+  local any_failed=0
+  for skill in "$@"; do
+    local target="$local_dir/$skill"
+
+    if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+      echo "error: skill '$skill' not found in local directory" >&2
+      any_failed=1
+      continue
+    fi
+
+    if [ ! -L "$target" ]; then
+      echo "warning: '$skill' is not managed by skoll; skipping" >&2
+      continue
+    fi
+
+    # Resolve the symlink target to check if managed by skoll
+    local link_target
+    link_target="$(readlink "$target")"
+
+    if [[ "$link_target" != "$SKOLL_STOWED"* ]]; then
+      echo "warning: '$skill' is not managed by skoll; skipping" >&2
+      continue
+    fi
+
+    rm "$target"
+    echo "removed '$skill'"
+  done
+
+  if [ "$any_failed" -eq 1 ]; then
+    exit 1
+  fi
+}
+
+# ---- Commands: clean ----
+
+cmd_clean() {
+  local force="${1:-}"
+
+  local local_dir
+  local_dir="$(resolve_local_skills_dir)"
+
+  if [ ! -d "$local_dir" ]; then
+    return
+  fi
+
+  # Gather managed symlinks (those pointing into stowed, including broken)
+  local managed=()
+  local entry
+  for entry in "$local_dir"/*; do
+    [ -L "$entry" ] || continue
+    local link_target
+    link_target="$(readlink "$entry")"
+    if [[ "$link_target" == "$SKOLL_STOWED"* ]]; then
+      managed+=("$entry")
+    fi
+  done
+
+  if [ "${#managed[@]}" -eq 0 ]; then
+    return
+  fi
+
+  if [ "$force" = "-f" ]; then
+    for entry in "${managed[@]}"; do
+      local name
+      name="$(basename "$entry")"
+      rm "$entry"
+      echo "removed '$name'"
+    done
+  else
+    echo "The following managed skills would be removed:"
+    for entry in "${managed[@]}"; do
+      local name
+      name="$(basename "$entry")"
+      echo "  $name"
+    done
+    echo "run 'skoll clean -f' to perform the removal"
+  fi
+}
+
 # ---- Main ----
 
 main() {
@@ -475,9 +570,11 @@ main() {
         fi
         cmd_rm_stowed "$2"
       else
-        echo "skoll: unknown option '$1' for rm" >&2
-        exit 1
+        cmd_rm "$@"
       fi
+      ;;
+    clean)
+      cmd_clean "${1:-}"
       ;;
     add)
       cmd_add "$@"
