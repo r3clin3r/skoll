@@ -542,6 +542,46 @@ cmd_clean() {
   fi
 }
 
+# ---- Command: help ----
+
+cmd_help() {
+  cat <<'HELP'
+skoll — local skill manager powered by git, stow and fzf
+
+SYNOPSIS:
+    skoll [--help|-h]
+    skoll <command> [<args>]
+
+COMMANDS:
+    list                    List locally installed skills (symlinks in cwd)
+    list --stowed           List all skills managed by skoll in stowed dir
+
+    search [<pattern>]      Fuzzy-search stowed skills with fzf; without
+                            a pattern opens the interactive fzf picker
+
+    add <skill> [...]       Symlink one or more stowed skills to the local
+                            skills directory
+    add --ALL               Symlink all stowed skills into the local dir
+
+    rm <skill> [...]        Remove one or more locally installed skills
+                            (only those managed by skoll)
+    rm --stowed <repo>      Remove a stowed skill repository entirely
+
+    clean                   List managed skills that would be removed
+                            (dry run; use -f to perform removal)
+    clean -f                Remove all locally managed skills
+
+    get <url>               Download a skill repository and add it to the
+                            stowed directory (as a git submodule)
+
+    update                  Git-pull all stowed skill submodules
+
+    -h, --help              Show this help message
+
+See README.md or the skoll data model for more details.
+HELP
+}
+
 # ---- Main ----
 
 main() {
@@ -582,8 +622,15 @@ main() {
     search)
       cmd_search "$@"
       ;;
+    "-h"|"--help")
+      cmd_help
+      ;;
+    "")
+      cmd_help
+      ;;
     *)
       echo "skoll: unknown command '$cmd'" >&2
+      echo "Run 'skoll --help' for usage." >&2
       exit 1
       ;;
   esac
