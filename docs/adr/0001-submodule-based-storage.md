@@ -24,8 +24,6 @@ We use a git repo at `~/.skoll/stowed/` with git submodules for external skill r
   - User-created skills can coexist with downloaded skills.
 - **Cons**:
   - Git submodules are complex and can be confusing for users.
-  - Requires the user to commit changes to `~/.skoll/stowed/` to persist state.
-  - `--no-git` install mode provides a simpler alternative without git tracking.
 
 ## Alternatives considered
 
