@@ -104,38 +104,69 @@ cmd_list_stowed() {
     return
   fi
 
-  local repo
-  for repo in "$SKOLL_STOWED"/*/; do
-    [ -d "$repo" ] || continue
-    local repo_name
-    repo_name="$(basename "$repo")"
+  local entry
+  for entry in "$SKOLL_STOWED"/*/; do
+    [ -d "$entry" ] || continue
+    local entry_name
+    entry_name="$(basename "$entry")"
     # Skip .git
-    [ "$repo_name" = ".git" ] && continue
+    [ "$entry_name" = ".git" ] && continue
 
     # Recursively find all SKILL.md files at depth >= 2
-    # (depth 1 = repo root, depth 2+ = skill directories)
     local skill_file
     while IFS= read -r -d '' skill_file; do
-      local skill_dir
-      skill_dir="$(dirname "$skill_file")"
-      local skill_name
-      skill_name="$(basename "$skill_dir")"
-      echo "$skill_name ($repo_name)"
-    done < <(find "$repo" -mindepth 2 -type f -name "SKILL.md" -print0 2>/dev/null)
+      # Compute the relative path from the entry to the SKILL.md
+      local rel="${skill_file#$entry}"
+      IFS='/' read -ra parts <<< "$rel"
+      local num_parts=${#parts[@]}
+
+      local skill_name="${parts[$((num_parts-2))]}"
+
+      if [ "$num_parts" -eq 2 ]; then
+        # <skill>/SKILL.md — entry is the repo itself
+        echo "$skill_name ($entry_name)"
+      else
+        # <repo>/<stuff...>/<skill>/SKILL.md — entry contains repo subdirs
+        local sub_repo="${parts[0]}"
+        echo "$skill_name ($entry_name/$sub_repo)"
+      fi
+    done < <(find "$entry" -mindepth 2 -type f -name "SKILL.md" -print0 2>/dev/null)
   done
 }
 
 cmd_get() {
   local url="$1"
 
-  # Derive directory name from URL basename, stripping .git suffix
-  local repo_name
-  repo_name="$(basename "$url")"
-  repo_name="${repo_name%.git}"
+  # Derive path from URL:
+  #   SSH:   git@github.com:mattpocock/skills.git  →  mattpocock/skills
+  #   HTTPS: https://github.com/mattpocock/skills.git  →  mattpocock/skills
+  #   Local: /path/to/skills  →  skills
+  local path_spec
+  if [[ "$url" == *"://"* ]] && [[ "$url" != "file://"* ]]; then
+    # Remote HTTPS URL: strip protocol + hostname, keep owner/repo
+    local after_protocol="${url#*://}"
+    path_spec="${after_protocol#*/}"
+  elif [[ "$url" == *"@"*":"* ]] && [[ "$url" != "/"* ]]; then
+    # SSH URL: extract after colon  →  owner/repo.git
+    path_spec="${url#*:}"
+  else
+    # Local path or file://: use just the basename
+    path_spec="$(basename "$url")"
+  fi
+
+  # Strip .git suffix
+  path_spec="${path_spec%.git}"
+
+  # Create parent directory (e.g. stowed/mattpocock/) if needed
+  local parent_dir
+  parent_dir="$(dirname "$path_spec")"
+  if [ "$parent_dir" != "." ]; then
+    mkdir -p "$SKOLL_STOWED/$parent_dir"
+  fi
 
   # Check for collision
-  if [ -d "$SKOLL_STOWED/$repo_name" ]; then
-    echo "error: '$repo_name' already exists in stowed directory" >&2
+  if [ -d "$SKOLL_STOWED/$path_spec" ]; then
+    echo "error: '$path_spec' already exists in stowed directory" >&2
     exit 1
   fi
 
@@ -145,8 +176,8 @@ cmd_get() {
   fi
 
   # Add as submodule
-  git -C "$SKOLL_STOWED" submodule add "$url" "$repo_name"
-  echo "added '$repo_name' to stowed directory"
+  git -C "$SKOLL_STOWED" submodule add "$url" "$path_spec"
+  echo "added '$path_spec' to stowed directory"
 }
 
 cmd_update() {
@@ -198,6 +229,13 @@ cmd_rm_stowed() {
   else
     # Not a git repo, just remove the directory
     rm -rf "$SKOLL_STOWED/$repo_name"
+  fi
+
+  # Clean up owner parent dir if now empty
+  local parent_dir
+  parent_dir="$(dirname "$repo_name")"
+  if [ "$parent_dir" != "." ] && [ -d "$SKOLL_STOWED/$parent_dir" ]; then
+    rmdir "$SKOLL_STOWED/$parent_dir" 2>/dev/null || true
   fi
 
   echo "removed '$repo_name' from stowed directory"

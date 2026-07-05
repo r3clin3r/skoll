@@ -256,10 +256,13 @@ test_nested_skill_discovery() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "list --stowed should exit 0" || exit 1
-  assert_contains "$output" "code-review (nested-repo)" "should find nested skill under engineering" || exit 1
-  assert_contains "$output" "tdd (nested-repo)" "should find nested skill under engineering" || exit 1
-  assert_contains "$output" "grilling (nested-repo)" "should find nested skill under productivity" || exit 1
-  assert_contains "$output" "my-tool (nested-repo)" "should find top-level skill" || exit 1
+  # Skills under skills/engineering/ → repo is nested-repo/skills
+  assert_contains "$output" "code-review (nested-repo/skills)" "should find nested skill under engineering" || exit 1
+  assert_contains "$output" "tdd (nested-repo/skills)" "should find nested skill under engineering" || exit 1
+  # Skills under skills/productivity/ → repo is nested-repo/skills
+  assert_contains "$output" "grilling (nested-repo/skills)" "should find nested skill under productivity" || exit 1
+  # Skill under misc/ → repo is nested-repo/misc
+  assert_contains "$output" "my-tool (nested-repo/misc)" "should find skill under misc subdir" || exit 1
   assert_not_contains "$output" "README.md" "non-skill files should be ignored" || exit 1
 }
 
