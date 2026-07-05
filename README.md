@@ -63,5 +63,4 @@ skoll can only remove files in ~/.skoll/stowed/ but you should be careful if you
 skoll only ads and removes symlinks using GNU stow.
 
 By default skoll initislises a git repo in ~/.skoll/stowed and adds other repos as submodules. You can disable this with `.install.sh --no-git`
-:w
 
