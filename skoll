@@ -292,6 +292,36 @@ find_stowed_skill() {
   fi
 }
 
+# ---- Commands: add interactive ----
+
+cmd_add_interactive() {
+  # Gather all stowed skills
+  local all_skills
+  all_skills=$(cmd_list_stowed 2>/dev/null || true)
+
+  if [ -z "$all_skills" ]; then
+    echo "error: no stowed skills to add" >&2
+    exit 1
+  fi
+
+  # Pipe to fzf -m for multi-select, then extract skill names
+  local selected
+  selected=$(echo "$all_skills" | fzf -m | sed 's/ (.*)//')
+
+  if [ -z "$selected" ]; then
+    # User cancelled
+    exit 0
+  fi
+
+  # Build args array from selected lines and call cmd_add
+  local args=()
+  while IFS= read -r line; do
+    args+=("$line")
+  done <<< "$selected"
+
+  cmd_add "${args[@]}"
+}
+
 # ---- Commands: add ----
 
 cmd_add() {
@@ -303,6 +333,7 @@ cmd_add() {
   if [ $# -lt 1 ]; then
     echo "usage: skoll add <skill> [<skill>...]" >&2
     echo "       skoll add --ALL" >&2
+    echo "       skoll add --interactive" >&2
     exit 1
   fi
 
@@ -562,6 +593,8 @@ COMMANDS:
     add <skill> [...]       Symlink one or more stowed skills to the local
                             skills directory
     add --ALL               Symlink all stowed skills into the local dir
+    add --interactive, -i   Interactive multi-select from stowed skills via fzf,
+                            then add the selected skills
 
     rm <skill> [...]        Remove one or more locally installed skills
                             (only those managed by skoll)
@@ -616,11 +649,15 @@ main() {
     clean)
       cmd_clean "${1:-}"
       ;;
-    add)
-      cmd_add "$@"
-      ;;
     search)
       cmd_search "$@"
+      ;;
+    add)
+      if [ "${1:-}" = "--interactive" ] || [ "${1:-}" = "-i" ]; then
+        cmd_add_interactive
+      else
+        cmd_add "$@"
+      fi
       ;;
     "-h"|"--help")
       cmd_help
