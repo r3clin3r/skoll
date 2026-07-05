@@ -1,5 +1,7 @@
 This is a fresh project--read README.md to understand the desired API.
 
+When creating, removing, updating detroying command or command flags, i.e. when changing the skoll API, make sure that the CONTEXT is updated and the CLI help message is updated. 
+
 Experiments should be done on a new git branch.
 
 ## Agent skills
