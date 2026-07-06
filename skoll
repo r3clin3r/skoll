@@ -63,6 +63,82 @@ resolve_local_skills_dir() {
   echo "$cwd/$dir_name"
 }
 
+# Walk up from cwd looking for ALL local skills directories.
+# Returns each found directory on its own line, plus the fallback if set.
+resolve_all_local_skills_dirs() {
+  local dir_name
+  dir_name=$(read_config "local_skills_dir" ".agents/skills/")
+  dir_name="${dir_name%/}"
+
+  local cwd
+  cwd="$(pwd)"
+
+  # Collect all directories found while walking up
+  local dirs=()
+  local check="$cwd"
+  while true; do
+    if [ -d "$check/$dir_name" ]; then
+      dirs+=("$check/$dir_name")
+    fi
+    if [ "$check" = "/" ]; then
+      break
+    fi
+    check="$(dirname "$check")"
+  done
+
+  # Also check fallback if configured
+  local fallback
+  fallback=$(read_config "fallback" "")
+  if [ -n "$fallback" ]; then
+    fallback="${fallback/#\~/$HOME}"
+    if [ -d "$fallback" ]; then
+      # Only add if not already in the list
+      local found=0
+      for d in "${dirs[@]}"; do
+        if [ "$d" = "$fallback" ]; then
+          found=1
+          break
+        fi
+      done
+      if [ "$found" -eq 0 ]; then
+        dirs+=("$fallback")
+      fi
+    fi
+  fi
+
+  # Output all directories
+  for d in "${dirs[@]}"; do
+    echo "$d"
+  done
+}
+
+# Format a directory path for display:
+# - Replace $HOME with ~
+# - If under cwd, use relative path with ./ prefix
+# - Append trailing slash if not present
+format_skills_dir() {
+  local dir="$1"
+  local cwd
+  cwd="$(pwd)"
+
+  # Use relative path if under cwd
+  if [[ "$dir" == "$cwd"/* ]]; then
+    dir="./${dir#$cwd/}"
+  elif [ "$dir" = "$cwd" ]; then
+    dir="."
+  fi
+
+  # Replace HOME with ~
+  dir="${dir/#$HOME/\~}"
+
+  # Append trailing slash if not present
+  if [[ "$dir" != */ ]]; then
+    dir="${dir}/"
+  fi
+
+  echo "$dir"
+}
+
 # ---- Commands ----
 
 cmd_list() {
@@ -73,30 +149,49 @@ cmd_list() {
     return
   fi
 
-  local local_dir
-  local_dir="$(resolve_local_skills_dir)"
-
-  if [ ! -d "$local_dir" ]; then
+  local dirs
+  dirs=$(resolve_all_local_skills_dirs)
+  if [ -z "$dirs" ]; then
     return
   fi
 
-  local found=0
-  local entry
-  for entry in "$local_dir"/*; do
-    [ -L "$entry" ] || continue
-    local name
-    name="$(basename "$entry")"
-    if [ -e "$entry" ]; then
-      echo "$name"
-    else
-      echo "$name [broken]"
-    fi
-    found=1
-  done
+  local first_dir=1
+  local dir
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
 
-  if [ "$found" -eq 0 ]; then
-    : # empty list, no output
-  fi
+    local found=0
+    local skills=()
+    local entry
+    for entry in "$dir"/*; do
+      [ -L "$entry" ] || continue
+      local name
+      name="$(basename "$entry")"
+      if [ -e "$entry" ]; then
+        skills+=("$name")
+      else
+        skills+=("$name [broken]")
+      fi
+      found=1
+    done
+
+    if [ "$found" -eq 0 ]; then
+      continue
+    fi
+
+    if [ "$first_dir" -eq 0 ]; then
+      echo ""
+    fi
+    first_dir=0
+
+    local formatted_dir
+    formatted_dir=$(format_skills_dir "$dir")
+    echo "$formatted_dir"
+
+    for skill in "${skills[@]}"; do
+      echo "    $skill"
+    done
+  done <<< "$dirs"
 }
 
 cmd_list_stowed() {
@@ -584,7 +679,7 @@ SYNOPSIS:
     skoll <command> [<args>]
 
 COMMANDS:
-    list                    List locally installed skills (symlinks in cwd)
+    list                    List locally installed skills, grouped by directory
     list --stowed           List all skills managed by skoll in stowed dir
 
     search [<pattern>]      Fuzzy-search stowed skills with fzf; without

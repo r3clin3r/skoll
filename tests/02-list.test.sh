@@ -44,7 +44,8 @@ test_list_with_local_skills() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "skoll list should exit 0" || exit 1
-  assert_contains "$output" "my-skill" "output should contain skill name" || exit 1
+  assert_contains "$output" "./.agents/skills/" "output should contain directory header" || exit 1
+  assert_contains "$output" "    my-skill" "output should contain indented skill name" || exit 1
 }
 
 test_list_stowed_empty() {
@@ -116,7 +117,8 @@ test_list_broken_skill() {
 
   assert_exit_code "$exit_code" 0 "skoll list should exit 0" || exit 1
   # Should indicate the skill is broken
-  assert_contains "$output" "broken" "output should indicate broken skill" || exit 1
+  assert_contains "$output" "./.agents/skills/" "output should contain directory header" || exit 1
+  assert_contains "$output" "    broken-skill [broken]" "output should indicate broken skill" || exit 1
 }
 
 test_search_with_pattern() {

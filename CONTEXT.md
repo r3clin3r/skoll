@@ -12,6 +12,13 @@ Skoll is a local skill manager powered by git, stow, and fzf.
 
 ## Commands
 
+### `list`
+
+List locally installed skills (symlinks in local skills directories).
+
+- `skoll list` — list all skills found in local skills directories, grouped by directory. Walks up from cwd and discovers all `.agents/skills/` directories (or whatever `local_skills_dir` is configured), plus the fallback directory if set. Each directory is shown as a header with its skills listed underneath.
+- `skoll list --stowed` — list all stowed skills managed by skoll
+
 ### `add`
 
 Create symlinks from stowed skills into the local skills directory.
