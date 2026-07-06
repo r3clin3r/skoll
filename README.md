@@ -32,7 +32,9 @@ Unix/Linux-like OS with bash 5, git, GNU stow, and fzf.
 
 ## Installation
 
-./install.sh  # will check/confirm-to-install deps
+```
+./install.sh  # will check/ask to install deps
+```
 
 ## Architecture
 
