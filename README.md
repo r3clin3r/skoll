@@ -60,9 +60,9 @@ The defaults are `.agents/skills/` and blank fallback.
 
 ## Data model
 
-skoll can only remove files in ~/.skoll/stowed/ but you should be careful if you have stowed skills that are not stored anywhere else.
+Skoll can only remove real files/folders in ~/.skoll/stowed/, so you should be careful if you have skoll-stowed skills that are not stored anywhere else.
 
-skoll only ads and removes symlinks using GNU stow.
+Other than managin the .skoll/stowed dir, Skoll only ads and removes symlinks using GNU stow.
 
-By default skoll initislises a git repo in ~/.skoll/stowed and adds other repos as submodules. You can disable this with `.install.sh --no-git`
+By default skoll initislises a git repo in ~/.skoll/stowed and adds other repos as submodules. You can disable this with `.install.sh --no-git`.
 
