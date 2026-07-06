@@ -23,6 +23,19 @@ read_config() {
   echo "$default"
 }
 
+# Resolve local skills directory in the current directory only (no parent walk).
+resolve_local_skills_dir_cwd_only() {
+  local dir_name
+  dir_name=$(read_config "local_skills_dir" ".agents/skills/")
+  # Normalize: strip trailing slash
+  dir_name="${dir_name%/}"
+
+  local cwd
+  cwd="$(pwd)"
+
+  echo "$cwd/$dir_name"
+}
+
 # Walk up from cwd looking for the local skills directory.
 # Tries the primary local_skills_dir first, then the fallback if set.
 resolve_local_skills_dir() {
@@ -434,9 +447,9 @@ cmd_add() {
 
   local skills=("$@")
 
-  # Resolve local skills directory
+  # Resolve local skills directory (cwd only, no parent walk)
   local local_dir
-  local_dir="$(resolve_local_skills_dir)"
+  local_dir="$(resolve_local_skills_dir_cwd_only)"
 
   # If local skills directory doesn't exist, ask to create it
   if [ ! -d "$local_dir" ]; then
@@ -522,9 +535,9 @@ cmd_add_all() {
     exit 1
   fi
 
-  # Resolve local skills directory
+  # Resolve local skills directory (cwd only, no parent walk)
   local local_dir
-  local_dir="$(resolve_local_skills_dir)"
+  local_dir="$(resolve_local_skills_dir_cwd_only)"
 
   # If local skills directory doesn't exist, ask to create it
   if [ ! -d "$local_dir" ]; then
@@ -582,7 +595,7 @@ cmd_rm() {
   fi
 
   local local_dir
-  local_dir="$(resolve_local_skills_dir)"
+  local_dir="$(resolve_local_skills_dir_cwd_only)"
 
   if [ ! -d "$local_dir" ]; then
     echo "error: no local skills directory found" >&2
@@ -628,7 +641,7 @@ cmd_clean() {
   local force="${1:-}"
 
   local local_dir
-  local_dir="$(resolve_local_skills_dir)"
+  local_dir="$(resolve_local_skills_dir_cwd_only)"
 
   if [ ! -d "$local_dir" ]; then
     return
@@ -686,13 +699,15 @@ COMMANDS:
                             a pattern opens the interactive fzf picker
 
     add <skill> [...]       Symlink one or more stowed skills to the local
-                            skills directory
+                            skills directory in the current directory
     add --ALL               Symlink all stowed skills into the local dir
+                            in the current directory
     add --interactive, -i   Interactive multi-select from stowed skills via fzf,
                             then add the selected skills
 
     rm <skill> [...]        Remove one or more locally installed skills
-                            (only those managed by skoll)
+                            from the current directory's local skills
+                            directory (only those managed by skoll)
     rm --stowed <repo>      Remove a stowed skill repository entirely
 
     clean                   List managed skills that would be removed

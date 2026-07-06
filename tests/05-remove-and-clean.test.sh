@@ -339,6 +339,112 @@ test_clean_f_leaves_non_managed_files() {
   [ -f "$SKOLL_TEST_TMPDIR/project/.agents/skills/manual-file" ] || { echo "  FAIL: manual file should remain"; exit 1; }
 }
 
+# ---- skoll rm only operates in current directory, not parents ----
+
+test_rm_from_subdir_does_not_remove_parent_skill() {
+  bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
+  setup_project_dir
+  setup_skills_dir
+  setup_managed_skill "my-skill"
+
+  # Create a subdirectory without a local skills dir
+  local subdir="$SKOLL_TEST_TMPDIR/project/subdir"
+  mkdir -p "$subdir"
+
+  # Run rm from the subdirectory
+  local output exit_code
+  output=$(cd "$subdir" && bash "$ROOT_DIR/skoll" rm my-skill 2>&1) || exit_code=$?
+  exit_code="${exit_code:-0}"
+
+  # Should fail because there is no local skills dir in the current dir
+  assert_exit_code "$exit_code" 1 "skoll rm from subdir should fail when no local dir in cwd" || exit 1
+  assert_contains "$output" "no local skills directory found" "output should say no local skills directory found" || exit 1
+
+  # Verify the parent's skill was NOT removed
+  local parent_link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
+  [ -L "$parent_link" ] || { echo "  FAIL: parent skill should not be removed"; exit 1; }
+}
+
+test_rm_from_subdir_only_removes_subdir_skill() {
+  bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
+  setup_project_dir
+  setup_skills_dir
+  setup_managed_skill "my-skill"
+
+  # Create a subdirectory with its own local skills dir and the same skill
+  local subdir="$SKOLL_TEST_TMPDIR/project/subdir"
+  mkdir -p "$subdir/.agents/skills"
+  ln -s "$HOME/.skoll/stowed/my-repo/my-skill" "$subdir/.agents/skills/my-skill"
+
+  # Run rm from the subdirectory
+  local output exit_code
+  output=$(cd "$subdir" && bash "$ROOT_DIR/skoll" rm my-skill 2>&1) || exit_code=$?
+  exit_code="${exit_code:-0}"
+
+  assert_exit_code "$exit_code" 0 "skoll rm from subdir should succeed" || exit 1
+
+  # Verify the subdir's skill was removed
+  local subdir_link="$subdir/.agents/skills/my-skill"
+  [ ! -e "$subdir_link" ] && [ ! -L "$subdir_link" ] || { echo "  FAIL: subdir skill should be removed"; exit 1; }
+
+  # Verify the parent's skill was NOT removed
+  local parent_link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
+  [ -L "$parent_link" ] || { echo "  FAIL: parent skill should not be removed"; exit 1; }
+}
+
+# ---- skoll clean only operates in current directory, not parents ----
+
+test_clean_from_subdir_does_not_clean_parent() {
+  bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
+  setup_project_dir
+  setup_skills_dir
+  setup_managed_skill "my-skill"
+
+  # Create a subdirectory without a local skills dir
+  local subdir="$SKOLL_TEST_TMPDIR/project/subdir"
+  mkdir -p "$subdir"
+
+  # Run clean -f from the subdirectory
+  local output exit_code
+  output=$(cd "$subdir" && bash "$ROOT_DIR/skoll" clean -f 2>&1) || exit_code=$?
+  exit_code="${exit_code:-0}"
+
+  # Should do nothing (no local dir in cwd)
+  assert_exit_code "$exit_code" 0 "skoll clean -f from subdir should exit 0" || exit 1
+  assert_eq "$output" "" "output should be empty when no local skills dir in cwd" || exit 1
+
+  # Verify the parent's skill was NOT removed
+  local parent_link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
+  [ -L "$parent_link" ] || { echo "  FAIL: parent skill should not be cleaned"; exit 1; }
+}
+
+test_clean_from_subdir_only_cleans_subdir() {
+  bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
+  setup_project_dir
+  setup_skills_dir
+  setup_managed_skill "my-skill"
+
+  # Create a subdirectory with its own local skills dir and the same skill
+  local subdir="$SKOLL_TEST_TMPDIR/project/subdir"
+  mkdir -p "$subdir/.agents/skills"
+  ln -s "$HOME/.skoll/stowed/my-repo/my-skill" "$subdir/.agents/skills/my-skill"
+
+  # Run clean -f from the subdirectory
+  local output exit_code
+  output=$(cd "$subdir" && bash "$ROOT_DIR/skoll" clean -f 2>&1) || exit_code=$?
+  exit_code="${exit_code:-0}"
+
+  assert_exit_code "$exit_code" 0 "skoll clean -f from subdir should succeed" || exit 1
+
+  # Verify the subdir's skill was removed
+  local subdir_link="$subdir/.agents/skills/my-skill"
+  [ ! -e "$subdir_link" ] && [ ! -L "$subdir_link" ] || { echo "  FAIL: subdir skill should be cleaned"; exit 1; }
+
+  # Verify the parent's skill was NOT removed
+  local parent_link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
+  [ -L "$parent_link" ] || { echo "  FAIL: parent skill should not be cleaned"; exit 1; }
+}
+
 # ---- Register tests ----
 
 # skoll rm
@@ -350,6 +456,8 @@ run_test "skoll rm removes multiple skills" test_rm_removes_multiple_skills
 run_test "skoll rm removes broken managed symlink" test_rm_removes_broken_managed_symlink
 run_test "skoll rm fails if skill not found locally" test_rm_fails_if_skill_not_found_locally
 run_test "skoll rm leaves non-managed files alone alongside managed" test_rm_leaves_non_managed_when_mixed_with_managed
+run_test "skoll rm from subdir does not remove parent skill" test_rm_from_subdir_does_not_remove_parent_skill
+run_test "skoll rm from subdir only removes subdir skill" test_rm_from_subdir_only_removes_subdir_skill
 
 # skoll clean
 run_test "skoll clean previews without -f" test_clean_previews_without_f
@@ -359,3 +467,5 @@ run_test "skoll clean leaves local skills dir intact" test_clean_leaves_local_sk
 run_test "skoll clean does nothing when no managed skills" test_clean_does_nothing_when_no_managed_skills
 run_test "skoll clean preview does not modify state" test_clean_preview_does_not_modify
 run_test "skoll clean -f leaves non-managed files" test_clean_f_leaves_non_managed_files
+run_test "skoll clean from subdir does not clean parent" test_clean_from_subdir_does_not_clean_parent
+run_test "skoll clean from subdir only cleans subdir" test_clean_from_subdir_only_cleans_subdir

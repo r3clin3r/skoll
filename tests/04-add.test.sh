@@ -282,9 +282,9 @@ test_add_aborts_if_local_dir_missing_and_no_confirmation() {
   [ ! -d "$skills_dir" ] || { echo "  FAIL: local skills dir should not have been created"; exit 1; }
 }
 
-# ---- skoll add works from any subdirectory ----
+# ---- skoll add only operates in the current directory, not parents ----
 
-test_add_works_from_subdirectory() {
+test_add_only_operates_in_current_dir() {
   bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
   setup_project_dir
 
@@ -292,20 +292,56 @@ test_add_works_from_subdirectory() {
   mkdir -p "$HOME/.skoll/stowed/my-repo/my-skill"
   touch "$HOME/.skoll/stowed/my-repo/my-skill/SKILL.md"
 
-  # Setup: create local skills dir (not in subdir, in project root)
+  # Setup: create local skills dir in project root (parent)
   setup_skills_dir
 
-  # Run skoll add from a subdirectory
-  mkdir -p "$SKOLL_TEST_TMPDIR/project/subdir"
+  # Also create local skills dir in a subdirectory (current dir)
+  local subdir="$SKOLL_TEST_TMPDIR/project/subdir"
+  mkdir -p "$subdir/.agents/skills"
+
+  # Run skoll add from the subdirectory
   local output exit_code
-  output=$(cd "$SKOLL_TEST_TMPDIR/project/subdir" && bash "$ROOT_DIR/skoll" add my-skill 2>&1) || exit_code=$?
+  output=$(cd "$subdir" && bash "$ROOT_DIR/skoll" add my-skill 2>&1) || exit_code=$?
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "skoll add should work from subdirectory" || exit 1
 
-  # Verify the symlink was created in the project root's skills dir
-  local link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
-  [ -L "$link" ] || { echo "  FAIL: expected symlink at project root skills dir"; exit 1; }
+  # Verify the symlink was created in the subdirectory's skills dir, NOT the parent's
+  local subdir_link="$subdir/.agents/skills/my-skill"
+  [ -L "$subdir_link" ] || { echo "  FAIL: expected symlink at subdir skills dir"; exit 1; }
+
+  # Verify the parent's skills dir was NOT touched
+  local parent_link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
+  [ ! -e "$parent_link" ] || { echo "  FAIL: parent skills dir should not be touched"; exit 1; }
+}
+
+test_add_from_subdir_creates_local_dir_if_missing() {
+  bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
+  setup_project_dir
+
+  # Setup: create a stowed skill
+  mkdir -p "$HOME/.skoll/stowed/my-repo/my-skill"
+  touch "$HOME/.skoll/stowed/my-repo/my-skill/SKILL.md"
+
+  # Setup: create local skills dir in project root (parent)
+  setup_skills_dir
+
+  # Run skoll add from a subdirectory without a skills dir
+  local subdir="$SKOLL_TEST_TMPDIR/project/subdir"
+  mkdir -p "$subdir"
+  local output exit_code
+  output=$(cd "$subdir" && echo "y" | bash "$ROOT_DIR/skoll" add my-skill 2>&1) || exit_code=$?
+  exit_code="${exit_code:-0}"
+
+  assert_exit_code "$exit_code" 0 "skoll add should create local skills dir in subdir" || exit 1
+
+  # Verify the symlink was created in the subdirectory's skills dir
+  local subdir_link="$subdir/.agents/skills/my-skill"
+  [ -L "$subdir_link" ] || { echo "  FAIL: expected symlink at subdir skills dir"; exit 1; }
+
+  # Verify the parent's skills dir was NOT touched
+  local parent_link="$SKOLL_TEST_TMPDIR/project/.agents/skills/my-skill"
+  [ ! -e "$parent_link" ] || { echo "  FAIL: parent skills dir should not be touched"; exit 1; }
 }
 
 # ---- Register tests ----
@@ -321,4 +357,5 @@ run_test "skoll add fails if target is a directory" test_add_fails_on_non_symlin
 run_test "skoll add --ALL symlinks all stowed skills" test_add_all_symlinks_all_stowed_skills
 run_test "skoll add creates local skills dir with confirmation" test_add_creates_local_skills_dir_with_confirmation
 run_test "skoll add aborts if local dir missing and no confirmation" test_add_aborts_if_local_dir_missing_and_no_confirmation
-run_test "skoll add works from any subdirectory" test_add_works_from_subdirectory
+run_test "skoll add only operates in current directory" test_add_only_operates_in_current_dir
+run_test "skoll add from subdir creates local dir if missing" test_add_from_subdir_creates_local_dir_if_missing

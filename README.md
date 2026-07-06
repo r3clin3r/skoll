@@ -5,15 +5,15 @@ The local skill manager powered by git, stow and fzf.
 ## Usage
 
 ```
-skoll list                   # lists locally installed skills (in cwd only)
+skoll list                   # lists installed
 
 skoll list --stowed          # list all skills mananged by skoll 
 
 skoll search my-pattern          # fuzzy search in stowed skills, outputs matches as `skill-name (parent-dir)` one per line
 
-skoll add my-skill my-skill-2    # symlink stowed skills to local skills
+skoll add my-skill my-skill-2    # symlink stowed skills to local skills (e.g. in $PWD/.agents/skills only)
 
-skoll add --ALL                  # symlink all stowed skills locally
+skoll add --ALL                  # symlink all stowed skills locally (e.g. in $PWD/.agents/skills only)
 
 skoll rm my-skill                # remove my-skill locally (if it is managed by skoll)
 

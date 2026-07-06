@@ -21,7 +21,7 @@ List locally installed skills (symlinks in local skills directories).
 
 ### `add`
 
-Create symlinks from stowed skills into the local skills directory.
+Create symlinks from stowed skills into the local skills directory in the current directory (e.g. `$PWD/.agents/skills/`), never parent directories.
 
 - `skoll add <skill> [<skill>...]` — add one or more skills
 - `skoll add --ALL` — add all stowed skills
