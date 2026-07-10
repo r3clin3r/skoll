@@ -17,7 +17,11 @@ Skoll is a local skill manager powered by git, stow, and fzf.
 List locally installed skills (symlinks in local skills directories).
 
 - `skoll list` — list all skills found in local skills directories, grouped by directory. Walks up from cwd and discovers all `.agents/skills/` directories (or whatever `local_skills_dir` is configured), plus the fallback directory if set. Each directory is shown as a header with its skills listed underneath.
-- `skoll list --stowed` — list all stowed skills managed by skoll
+- `skoll list --stowed` — list all stowed skills managed by skoll, displayed as a table with columns: name, source, subfolder. Source is `local` for user-created entries or `author/repo` for git submodules. Subfolder is `_none_` when the skill sits at the root of its entry.
+
+### `search`
+
+- `skoll search [<pattern>]` — fuzzy-search stowed skills with fzf. Without a pattern opens the interactive fzf picker. Outputs `skill-name (parent-path)` one per line.
 
 ### `add`
 
@@ -26,3 +30,30 @@ Create symlinks from stowed skills into the local skills directory in the curren
 - `skoll add <skill> [<skill>...]` — add one or more skills
 - `skoll add --ALL` — add all stowed skills
 - `skoll add --interactive` / `skoll add -i` — interactively select skills via `fzf -m`, then add them
+
+### `rm`
+
+- `skoll rm <skill> [<skill>...]` — remove locally installed skills (only those managed by skoll)
+- `skoll rm --stowed <repo>` — remove a stowed skill repository entirely, warns if skills are in use
+
+### `clean`
+
+- `skoll clean` — dry run: list managed skills that would be removed
+- `skoll clean -f` — remove all locally managed skills
+
+### `get`
+
+- `skoll get <url>` — download a skill repository as a git submodule into `~/.skoll/stowed/`. Supports HTTPS, SSH, and local paths.
+
+### `update`
+
+- `skoll update` — git-pull the stowed repository and update all submodules
+
+### Flag validation
+
+Unrecognised flags on any command produce a non-zero exit and an error message to stderr. Recognised flags per command:
+- `list`: `--stowed`
+- `add`: `--ALL`, `--interactive`, `-i`
+- `clean`: `-f`
+- `rm`: `--stowed` (processed at the dispatch level)
+- All other commands accept no flags.

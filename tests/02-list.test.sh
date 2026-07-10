@@ -78,9 +78,19 @@ test_list_stowed_shows_skills() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "skoll list --stowed should exit 0" || exit 1
-  assert_contains "$output" "skill-one (repo-a)" "should show skill-one from repo-a" || exit 1
-  assert_contains "$output" "skill-two (repo-a)" "should show skill-two from repo-a" || exit 1
-  assert_contains "$output" "other-skill (repo-b)" "should show other-skill from repo-b" || exit 1
+  # Check table headers exist
+  assert_contains "$output" "name" "should have name column" || exit 1
+  assert_contains "$output" "subfolder" "should have subfolder column" || exit 1
+  assert_contains "$output" "source" "should have source column" || exit 1
+  # Check skill names appear
+  assert_contains "$output" "skill-one" "should show skill-one" || exit 1
+  assert_contains "$output" "skill-two" "should show skill-two" || exit 1
+  assert_contains "$output" "other-skill" "should show other-skill" || exit 1
+  # Check subfolder (parent dir) info
+  assert_contains "$output" "repo-a" "should show repo-a as subfolder" || exit 1
+  assert_contains "$output" "repo-b" "should show repo-b as subfolder" || exit 1
+  # Check source
+  assert_contains "$output" "local" "source should be local" || exit 1
   assert_not_contains "$output" "README.md" "non-skill files should be ignored" || exit 1
 }
 
@@ -98,9 +108,10 @@ test_list_stowed_collisions() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "skoll list --stowed should exit 0" || exit 1
-  # Both should appear with their repo disambiguation
-  assert_contains "$output" "common-skill (repo-alpha)" "should show common-skill from repo-alpha" || exit 1
-  assert_contains "$output" "common-skill (repo-beta)" "should show common-skill from repo-beta" || exit 1
+  # Both should appear with their subfolder disambiguation
+  assert_contains "$output" "common-skill" "should show common-skill name" || exit 1
+  assert_contains "$output" "repo-alpha" "should show repo-alpha as subfolder" || exit 1
+  assert_contains "$output" "repo-beta" "should show repo-beta as subfolder" || exit 1
 }
 
 test_list_broken_skill() {
@@ -135,8 +146,12 @@ test_search_with_pattern() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "skoll search <pattern> should exit 0" || exit 1
-  assert_contains "$output" "my-skill (repo-alpha)" "should match my-skill" || exit 1
-  assert_contains "$output" "other-skill (repo-beta)" "should match other-skill" || exit 1
+  # Search uses same table format as add -i: aligned columns
+  assert_contains "$output" "my-skill" "should show my-skill name" || exit 1
+  assert_contains "$output" "repo-alpha" "should show repo-alpha as subfolder" || exit 1
+  assert_contains "$output" "other-skill" "should show other-skill name" || exit 1
+  assert_contains "$output" "repo-beta" "should show repo-beta as subfolder" || exit 1
+  assert_contains "$output" "local" "source should be local" || exit 1
 }
 
 test_search_no_args() {
@@ -154,8 +169,10 @@ test_search_no_args() {
 
   assert_exit_code "$exit_code" 0 "skoll search (no args) should exit 0" || exit 1
   # Interactive fzf: the stub cats all input, so all skills should appear
-  assert_contains "$output" "skill-one (repo-alpha)" "should show skill-one" || exit 1
-  assert_contains "$output" "skill-two (repo-alpha)" "should show skill-two" || exit 1
+  assert_contains "$output" "skill-one" "should show skill-one name" || exit 1
+  assert_contains "$output" "skill-two" "should show skill-two name" || exit 1
+  assert_contains "$output" "repo-alpha" "should show repo-alpha as subfolder" || exit 1
+  assert_contains "$output" "local" "source should be local" || exit 1
 }
 
 test_search_empty_stowed() {

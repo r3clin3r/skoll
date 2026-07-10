@@ -152,10 +152,29 @@ format_skills_dir() {
   echo "$dir"
 }
 
+# Validate that command arguments don't contain unrecognized flags
+_validate_no_flags() {
+  local cmd_name="$1"
+  shift
+  for arg in "$@"; do
+    if [[ "$arg" == -* ]]; then
+      echo "skoll: unrecognized option '$arg' for '$cmd_name'" >&2
+      echo "Run 'skoll --help' for usage." >&2
+      exit 1
+    fi
+  done
+}
+
 # ---- Commands ----
 
 cmd_list() {
   local stowed="${1:-}"
+
+  if [ -n "$stowed" ] && [ "$stowed" != "--stowed" ]; then
+    echo "skoll: unrecognized option '$stowed' for 'list'" >&2
+    echo "Usage: skoll list [--stowed]" >&2
+    exit 1
+  fi
 
   if [ "$stowed" = "--stowed" ]; then
     cmd_list_stowed
@@ -207,42 +226,154 @@ cmd_list() {
   done <<< "$dirs"
 }
 
-cmd_list_stowed() {
+# Collect stowed skill metadata as pipe-separated lines: name|subfolder|source
+# Internal helper used by cmd_list_stowed, cmd_search, and cmd_add_interactive.
+_collect_stowed_entries() {
   if [ ! -d "$SKOLL_STOWED" ]; then
     return
   fi
 
-  local entry
-  for entry in "$SKOLL_STOWED"/*/; do
-    [ -d "$entry" ] || continue
-    local entry_name
-    entry_name="$(basename "$entry")"
-    # Skip .git
-    [ "$entry_name" = ".git" ] && continue
+  local skill_file
+  while IFS= read -r -d '' skill_file; do
+    # Relative path from stowed to SKILL.md, e.g. "my-skill/SKILL.md" or "repo/subdir/skill/SKILL.md"
+    local rel="${skill_file#$SKOLL_STOWED/}"
+    IFS='/' read -ra parts <<< "$rel"
+    local num_parts=${#parts[@]}
 
-    # Recursively find all SKILL.md files at depth >= 2
-    local skill_file
-    while IFS= read -r -d '' skill_file; do
-      # Compute the relative path from the entry to the SKILL.md
-      local rel="${skill_file#$entry}"
-      IFS='/' read -ra parts <<< "$rel"
-      local num_parts=${#parts[@]}
+    # parts[-2] = skill name (parent dir of SKILL.md)
+    local skill_name="${parts[$((num_parts-2))]}"
 
-      local skill_name="${parts[$((num_parts-2))]}"
+    # Compute the parent path prefix (everything before the skill dir)
+    local parent_path_parts=()
+    local i
+    for ((i=0; i<num_parts-2; i++)); do
+      parent_path_parts+=("${parts[$i]}")
+    done
+    local num_parent=${#parent_path_parts[@]}
 
-      if [ "$num_parts" -eq 2 ]; then
-        # <skill>/SKILL.md — entry is the repo itself
-        echo "$skill_name ($entry_name)"
+    # Determine source and subfolder
+    local source="local"
+    local subfolder="_none_"
+
+    # Walk up parent parts to find a git submodule boundary
+    # A git submodule has a .git FILE (not directory) with gitdir: pointer
+    local found_submodule=0
+    local acc=""
+    for ((i=0; i<num_parent; i++)); do
+      if [ -z "$acc" ]; then
+        acc="${parent_path_parts[$i]}"
       else
-        # <repo>/<stuff...>/<skill>/SKILL.md — entry contains repo subdirs
-        local sub_repo="${parts[0]}"
-        echo "$skill_name ($entry_name/$sub_repo)"
+        acc="$acc/${parent_path_parts[$i]}"
       fi
-    done < <(find "$entry" -mindepth 2 -type f -name "SKILL.md" -print0 2>/dev/null)
+
+      if [ -f "$SKOLL_STOWED/$acc/.git" ] && [ ! -d "$SKOLL_STOWED/$acc/.git" ]; then
+        # Found a submodule: source is the submodule path
+        source="$acc"
+        found_submodule=1
+
+        # Subfolder is everything between the submodule and the skill dir
+        local remaining_parts=()
+        local j
+        for ((j=i+1; j<num_parent; j++)); do
+          remaining_parts+=("${parent_path_parts[$j]}")
+        done
+
+        if [ "${#remaining_parts[@]}" -eq 0 ]; then
+          subfolder="_none_"
+        else
+          subfolder=""
+          for ((j=0; j<${#remaining_parts[@]}; j++)); do
+            if [ -z "$subfolder" ]; then
+              subfolder="${remaining_parts[$j]}"
+            else
+              subfolder="$subfolder/${remaining_parts[$j]}"
+            fi
+          done
+        fi
+        break
+      fi
+    done
+
+    if [ "$found_submodule" -eq 0 ]; then
+      # Not in a submodule
+      source="local"
+      if [ "$num_parent" -eq 0 ]; then
+        subfolder="_none_"
+      elif [ "$num_parent" -eq 1 ]; then
+        # stowed/category/skill-name/ — category is the subfolder
+        subfolder="${parent_path_parts[0]}"
+      else
+        # multi-level path without submodule
+        subfolder=""
+        for ((i=0; i<num_parent; i++)); do
+          if [ -z "$subfolder" ]; then
+            subfolder="${parent_path_parts[$i]}"
+          else
+            subfolder="$subfolder/${parent_path_parts[$i]}"
+          fi
+        done
+      fi
+    fi
+
+    echo "$skill_name|$subfolder|$source"
+
+  done < <(find "$SKOLL_STOWED" -mindepth 2 -type f -name "SKILL.md" -print0 2>/dev/null)
+}
+
+# Build a formatted table from pipe-separated entries (name|subfolder|source)
+# Includes header + separator row. Output written to stdout.
+_format_stowed_table() {
+  local rows="$1"
+
+  if [ -z "$rows" ]; then
+    return
+  fi
+
+  # Compute dynamic column widths (min 4 for header words)
+  local max_name=4
+  local max_source=6
+  local max_sub=9
+
+  local IFS=$'\n'
+  for row in $rows; do
+    local name="${row%%|*}"
+    local rest="${row#*|}"
+    local subfolder="${rest%%|*}"
+    local source="${rest#*|}"
+
+    [ "${#name}" -gt "$max_name" ] && max_name="${#name}"
+    [ "${#source}" -gt "$max_source" ] && max_source="${#source}"
+    [ "${#subfolder}" -gt "$max_sub" ] && max_sub="${#subfolder}"
+  done
+
+  # Add 1-char breathing room on name and source columns
+  local pad_name=$((max_name + 1))
+  local pad_source=$((max_source + 1))
+
+  # Print header + separator (order: name | source | subfolder)
+  printf "%-${pad_name}s | %-${pad_source}s | %s\n" "name" "source" "subfolder"
+  printf "%-${pad_name}s | %-${pad_source}s | %s\n" "---" "---" "---"
+
+  # Print data rows
+  for row in $rows; do
+    local name="${row%%|*}"
+    local rest="${row#*|}"
+    local subfolder="${rest%%|*}"
+    local source="${rest#*|}"
+    printf "%-${pad_name}s | %-${pad_source}s | %s\n" "$name" "$source" "$subfolder"
   done
 }
 
+cmd_list_stowed() {
+  local rows
+  rows=$(_collect_stowed_entries)
+  _format_stowed_table "$rows"
+}
+
+# Format a pipe-separated entry (name|subfolder|source) for fzf/search display
+# Outputs "skill-name (parent-path)"
 cmd_get() {
+  _validate_no_flags "get" "$@"
   local url="$1"
 
   # Derive path from URL:
@@ -289,6 +420,7 @@ cmd_get() {
 }
 
 cmd_update() {
+  _validate_no_flags "update" "$@"
   if [ ! -d "$SKOLL_STOWED/.git" ]; then
     echo "error: stowed directory is not a git repository. Re-run install.sh (without --no-git)" >&2
     exit 1
@@ -352,22 +484,25 @@ cmd_rm_stowed() {
 cmd_search() {
   local pattern="${1:-}"
 
-  # Gather all skills as "skill-name (repo-name)" lines
-  local all_skills=""
-  if [ -d "$SKOLL_STOWED" ]; then
-    all_skills=$(cmd_list_stowed 2>/dev/null || true)
-  fi
+  # Gather all skills entry data
+  local all_entries
+  all_entries=$(_collect_stowed_entries)
 
-  if [ -z "$all_skills" ]; then
+  if [ -z "$all_entries" ]; then
     return
   fi
 
+  # Same table format as what add -i shows in fzf: data rows (no header/separator),
+  # aligned columns: name, subfolder, source
+  local formatted
+  formatted=$(_format_stowed_table "$all_entries" | tail -n +3)
+
   if [ -z "$pattern" ]; then
     # Interactive: pipe to fzf
-    echo "$all_skills" | fzf
+    echo "$formatted" | fzf
   else
     # Non-interactive: pipe to fzf --filter
-    echo "$all_skills" | fzf --filter "$pattern"
+    echo "$formatted" | fzf --filter "$pattern"
   fi
 }
 
@@ -403,28 +538,34 @@ find_stowed_skill() {
 # ---- Commands: add interactive ----
 
 cmd_add_interactive() {
-  # Gather all stowed skills
-  local all_skills
-  all_skills=$(cmd_list_stowed 2>/dev/null || true)
+  # Gather all stowed skills entry data
+  local all_entries
+  all_entries=$(_collect_stowed_entries)
 
-  if [ -z "$all_skills" ]; then
+  if [ -z "$all_entries" ]; then
     echo "error: no stowed skills to add" >&2
     exit 1
   fi
 
-  # Pipe to fzf -m for multi-select, then extract skill names
+  # Build the same table format as list --stowed, but strip header/separator
+  # so fzf only shows data rows (aligned columns, no selectable header cruft)
+  local table
+  table=$(_format_stowed_table "$all_entries" | tail -n +3)
+
   local selected
-  selected=$(echo "$all_skills" | fzf -m | sed 's/ (.*)//')
+  selected=$(echo "$table" | fzf -m)
 
   if [ -z "$selected" ]; then
     # User cancelled
     exit 0
   fi
 
-  # Build args array from selected lines and call cmd_add
+  # Extract skill names from selected table rows: take the first column
   local args=()
   while IFS= read -r line; do
-    args+=("$line")
+    local skill
+    skill=$(echo "$line" | sed 's/ *|.*//')
+    args+=("$skill")
   done <<< "$selected"
 
   cmd_add "${args[@]}"
@@ -433,6 +574,15 @@ cmd_add_interactive() {
 # ---- Commands: add ----
 
 cmd_add() {
+  # Validate that flags are recognized
+  for arg in "$@"; do
+    if [[ "$arg" == -* ]] && [ "$arg" != "--ALL" ] && [ "$arg" != "--interactive" ] && [ "$arg" != "-i" ]; then
+      echo "skoll: unrecognized option '$arg' for 'add'" >&2
+      echo "Run 'skoll --help' for usage." >&2
+      exit 1
+    fi
+  done
+
   if [ "${1:-}" = "--ALL" ]; then
     cmd_add_all
     return
@@ -589,6 +739,7 @@ cmd_add_all() {
 # ---- Commands: rm (local) ----
 
 cmd_rm() {
+  _validate_no_flags "rm" "$@"
   if [ $# -lt 1 ]; then
     echo "usage: skoll rm <skill> [<skill>...]" >&2
     exit 1
@@ -638,6 +789,12 @@ cmd_rm() {
 # ---- Commands: clean ----
 
 cmd_clean() {
+  local first="${1:-}"
+  if [ -n "$first" ] && [ "$first" != "-f" ]; then
+    echo "skoll: unrecognized option '$first' for 'clean'" >&2
+    echo "Usage: skoll clean [-f]" >&2
+    exit 1
+  fi
   local force="${1:-}"
 
   local local_dir
@@ -743,7 +900,11 @@ main() {
       cmd_get "$1"
       ;;
     update)
-      cmd_update
+      if [ $# -gt 0 ]; then
+        cmd_update "$@"
+      else
+        cmd_update
+      fi
       ;;
     rm)
       if [ "${1:-}" = "--stowed" ]; then

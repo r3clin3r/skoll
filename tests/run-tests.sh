@@ -57,7 +57,7 @@ assert_not_dir() {
 
 assert_contains() {
   local output="$1" pattern="$2" msg="${3:-}"
-  if ! echo "$output" | grep -qF "$pattern"; then
+  if ! echo "$output" | grep -qF -- "$pattern"; then
     echo "  FAIL: $msg"
     echo "    expected output to contain: $pattern"
     echo "    actual output: $output"
@@ -68,7 +68,7 @@ assert_contains() {
 
 assert_not_contains() {
   local output="$1" pattern="$2" msg="${3:-}"
-  if echo "$output" | grep -qF "$pattern"; then
+  if echo "$output" | grep -qF -- "$pattern"; then
     echo "  FAIL: $msg"
     echo "    output unexpectedly contains: $pattern"
     return 1

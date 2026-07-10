@@ -49,8 +49,10 @@ test_get_repo_skills_appear_in_list_stowed() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "skoll list --stowed should exit 0" || exit 1
-  assert_contains "$output" "alpha-skill (test-skills)" "should show alpha-skill from repo" || exit 1
-  assert_contains "$output" "beta-skill (test-skills)" "should show beta-skill from repo" || exit 1
+  # Git submodule skills: source=test-skills, subfolder=_none_
+  assert_contains "$output" "alpha-skill" "should show alpha-skill" || exit 1
+  assert_contains "$output" "beta-skill" "should show beta-skill" || exit 1
+  assert_contains "$output" "test-skills" "should show test-skills as source" || exit 1
   assert_not_contains "$output" "README.md" "non-skill files should be ignored" || exit 1
 }
 
@@ -219,8 +221,12 @@ test_user_created_skills_coexist_with_submodules() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "list --stowed should exit 0" || exit 1
-  assert_contains "$output" "my-custom-skill (user-repo)" "should show user-created skill" || exit 1
-  assert_contains "$output" "sub-skill (submodule-repo)" "should show submodule skill" || exit 1
+  # User skill: source=local, subfolder=user-repo
+  assert_contains "$output" "my-custom-skill" "should show user-created skill name" || exit 1
+  assert_contains "$output" "user-repo" "should show user-repo as subfolder" || exit 1
+  # Submodule skill: source=submodule-repo, subfolder=_none_
+  assert_contains "$output" "sub-skill" "should show submodule skill name" || exit 1
+  assert_contains "$output" "submodule-repo" "should show submodule-repo as source" || exit 1
   assert_not_contains "$output" "README.md" "non-skill files should be ignored" || exit 1
 }
 
@@ -256,13 +262,18 @@ test_nested_skill_discovery() {
   exit_code="${exit_code:-0}"
 
   assert_exit_code "$exit_code" 0 "list --stowed should exit 0" || exit 1
-  # Skills under skills/engineering/ → repo is nested-repo/skills
-  assert_contains "$output" "code-review (nested-repo/skills)" "should find nested skill under engineering" || exit 1
-  assert_contains "$output" "tdd (nested-repo/skills)" "should find nested skill under engineering" || exit 1
-  # Skills under skills/productivity/ → repo is nested-repo/skills
-  assert_contains "$output" "grilling (nested-repo/skills)" "should find nested skill under productivity" || exit 1
-  # Skill under misc/ → repo is nested-repo/misc
-  assert_contains "$output" "my-tool (nested-repo/misc)" "should find skill under misc subdir" || exit 1
+  # All skills: source=local, subfolder varies
+  # code-review: subfolder = nested-repo/skills/engineering (3 levels deep)
+  assert_contains "$output" "code-review" "should find code-review" || exit 1
+  assert_contains "$output" "tdd" "should find tdd" || exit 1
+  assert_contains "$output" "grilling" "should find grilling" || exit 1
+  assert_contains "$output" "my-tool" "should find my-tool" || exit 1
+  # Check subfolder paths
+  assert_contains "$output" "nested-repo/skills/engineering" "subfolder should include nested path" || exit 1
+  assert_contains "$output" "nested-repo/skills/productivity" "subfolder should include productivity path" || exit 1
+  assert_contains "$output" "nested-repo/misc" "subfolder should include misc path" || exit 1
+  # Source is local
+  assert_contains "$output" "local" "source should be local" || exit 1
   assert_not_contains "$output" "README.md" "non-skill files should be ignored" || exit 1
 }
 
